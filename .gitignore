@@ -1,4 +1,5 @@
 data/
+NOTES.md
 .ipynb_checkpoints/
 __pycache__/
 *.pyc

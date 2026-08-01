@@ -43,5 +43,4 @@ python analyze.py              # route-level DiD, writes output/*.csv
 python build_notebook.py       # regenerates the .ipynb from source
 ```
 
-Requires `pandas`, `numpy`, `scipy`, `nbformat` (no pinned versions yet — see caveats
-below).
+Requires `pandas`, `numpy`, `scipy`, `nbformat` (no pinned versions yet).
