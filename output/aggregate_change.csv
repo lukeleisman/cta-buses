@@ -1,0 +1,7 @@
+Day type,Group,n routes,2024,2025,2026,%chg 25→26,%chg 24→26
+Weekday,Frequent,20,194871,224583,238511,6.2,22.4
+Weekday,Control,81,318433,352625,355506,0.8,11.6
+Saturday,Frequent,20,149166,170520,179659,5.4,20.4
+Saturday,Control,81,211678,236580,234703,-0.8,10.9
+Sunday/Holiday,Frequent,20,111308,128022,146136,14.1,31.3
+Sunday/Holiday,Control,81,152317,170900,176869,3.5,16.1
