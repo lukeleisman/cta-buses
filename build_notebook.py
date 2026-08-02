@@ -9,15 +9,32 @@ co = lambda s: c.append(nbf.v4.new_code_cell(s))
 md("""# Has the CTA Frequent Network gained ridership?
 
 **Question.** Between March and December 2025 the CTA phased 20 bus routes into a
-"Frequent Network" with 10-minutes-or-better headways. Did those routes gain riders
-beyond what they would have gained anyway?
+"Frequent Network" which advertised 10 minute or less wait times. For me, bus frequency
+makes a difference in how likely I am to use it vs driving, so I wonder: can we see the
+frequent network having an impact on ridership? Also, in the routes with the most increase
+in service, do we see the biggest change?
 
-Frequent corridors grew **+1.5pp (weekday), +3.1pp (Saturday), +6.9pp (Sunday)** more than
-the rest of the system, after adjusting for seasonality, system-wide trend, and the
-pre-existing growth difference between the groups.
+The CTA provides ridership numbers by day and route, so we can look at the data and
+establish whether we see increased ridership after network implementation. However,
+whether the frequent network actually *caused* the increase is much harder to establish,
+since there are lots of things that affect CTA ridership. Still, we can explore the data,
+and put some constraints on what sort of impact it may be having.
 
-Point estimates only — no inference run yet, so none of these are established as
-distinguishable from noise.
+**What is my plan of attack?**
+
+1. Explore the system as a whole. What trends do we see by season, day of the week, route,
+   etc.? What sort of statistical variation?
+2. Look specifically at the selected routes. What can we learn about them, and how they
+   might differ from the system? Do we see other anomalies?
+3. With an understanding of the data in hand, let's design a way to compare before and
+   after implementation.
+4. We can start with a raw comparison, and then we'll need to apply corrections.
+
+Potential corrections:
+
+- **Overall system growth** — are these routes growing more than the rest of the system?
+- **Pre-existing trend** — how was the system changing before? Was route frequency
+  increasing before? Was it population?
 
 ---
 
