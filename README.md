@@ -60,6 +60,19 @@ curl "https://data.cityofchicago.org/resource/bynn-gwxy.csv?\$limit=50000&\$orde
      -o data/cta_bus_monthly.csv
 ```
 
+**Route geometry** → `data/geo/` — downloaded by `exploration.ipynb` §4.a if missing, so no
+manual step is needed. Two files, because routes move:
+
+- [CTA - Bus Routes](https://data.cityofchicago.org/Transportation/CTA-Bus-Routes/6uva-a5ei/about_data)
+  (`6uva-a5ei`), updated 2025-01-08 — 127 routes, the current network.
+- [CTA - Bus Routes - KML](https://data.cityofchicago.org/Transportation/CTA-Bus-Routes-KML-Deprecated-February-2015-/atza-xq2n)
+  (`atza-xq2n`), deprecated 2015-02 — 140 routes, the only historical geometry the portal keeps.
+  Adds 22 discontinued routes the current file has dropped.
+
+Together they cover 149 of the 188 routes in the ridership data. The 39 without geometry —
+`R` shuttles, `X` expresses, special-event IDs — are 8.5% of summed mean riders/day, and are
+absent from the map and the lifespan panels rather than placed on a guess.
+
 ## Running
 
 Use the `divvy-cta` conda environment (pandas 3.0.5) — base anaconda is two major versions
