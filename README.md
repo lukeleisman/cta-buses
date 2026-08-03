@@ -23,8 +23,12 @@ what it did, and checks report their counts even when the count is zero.
 ## Layout
 
 - **`exploration.ipynb`** — start here. System-wide exploration before any before/after design:
-  integrity checks, route inventory and per-era statistics, day-of-week structure, holidays, and
-  a seasonal profile with the trend removed.
+  integrity checks and cross-checks, corridors, total and per-route ridership, per-era statistics,
+  and day-of-week structure. Writes `data/derived/` for the two notebooks below.
+- `holidays.ipynb` — which days CTA actually runs a holiday schedule on, and how much ridership
+  changes when it does. Needs `exploration.ipynb` to have run.
+- `seasonality.ipynb` — the within-year profile, trend removed and holiday weeks held out, and
+  whether it can be pooled across eras. Needs both of the above to have run.
 - `frequent_network_analysis.ipynb` — the earlier route-level difference-in-differences writeup.
   Being replaced; kept for reference.
 - `analyze.py`, `inference_proto.py`, `build_notebook.py` — supporting scripts for that earlier
@@ -65,6 +69,11 @@ behind and is not what these notebooks were run against. Dependencies are not ye
 conda activate divvy-cta
 jupyter lab exploration.ipynb
 ```
+
+The three notebooks run in order — `exploration.ipynb`, then `holidays.ipynb`, then
+`seasonality.ipynb`. The first writes `data/derived/daily.csv` and `route_inventory.csv`; the
+second writes `data/derived/holiday_calendar.csv`, which the third reads. `data/` is gitignored,
+so these are local and regenerate by re-running the notebooks.
 
 Notebook outputs are stripped on commit by [`nbstripout`](https://github.com/kynan/nbstripout),
 configured in `.gitattributes`, so the repository stays small. Your working copy keeps its
