@@ -1,8 +1,18 @@
-# CTA Frequent Network — ridership analysis
+# CTA bus service — what is promised, what is scheduled, what is delivered
 
-Between March and December 2025 the CTA phased 20 bus routes into a "Frequent Network"
-advertising 10-minute-or-less waits. Can we see that in the ridership data — and do the routes
-that gained the most service show the biggest change?
+This repository exists to understand CTA bus service. It works outward through four questions:
+
+1. **Claimed** — what CTA advertises. The Frequent Network page promises 10-minute-or-less
+   waits on 20 routes.
+2. **Scheduled** — what the timetable actually plans, which is not always what is advertised.
+3. **Delivered** — what riders actually get, measured from vehicle positions rather than
+   assumed from the schedule.
+4. **Effect on ridership** — whether service changes move boardings, especially across the
+   Frequent Network rollout.
+
+Between March and December 2025 the CTA phased 20 bus routes into that Frequent Network. Can we
+see it in the ridership data — and do the routes that gained the most service show the biggest
+change? That is where the work started, and questions 2 and 3 are now in progress.
 
 ![CTA bus ridership by week, 2001–2026](docs/weekly_ridership.png)
 
@@ -33,6 +43,12 @@ what it did, and checks report their counts even when the count is zero.
   Being replaced; kept for reference.
 - `analyze.py`, `inference_proto.py`, `build_notebook.py` — supporting scripts for that earlier
   notebook.
+- `fetch_stopwatch.py` — downloads the realised-service archive (below). Resumable;
+  `--dry-run` sizes a pull before it moves any data.
+- `docs/bus-tracker-data-plan.md` — the realised-frequency acquisition plan: source inventory,
+  what to pull where, known hazards, and the calibration that comes before any claim.
+- `docs/methods.md` — derivations and references. Currently headways and rider wait; other
+  statistical methods get added here rather than expanded inline.
 - `docs/` — figures referenced from this README.
 - `output/` — CSV summaries and figures from `analyze.py`.
 
@@ -72,6 +88,32 @@ manual step is needed. Two files, because routes move:
 Together they cover 149 of the 188 routes in the ridership data. The 39 without geometry —
 `R` shuttles, `X` expresses, special-event IDs — are 8.5% of summed mean riders/day, and are
 absent from the map and the lifespan panels rather than placed on a guess.
+
+### Realised service — Mansueto StopWatch
+
+The ridership files carry no service measure, so *delivered* frequency comes from the
+[Mansueto Institute's StopWatch](https://github.com/mansueto-institute/cta-stop-watch) archive,
+which continues the [Chi Hack Night Ghost Buses](https://github.com/chihacknight/chn-ghost-buses)
+scrape: CTA Bus Tracker polled every 5 minutes since 2022-05-19, interpolated to stop-level
+arrivals, plus CTA's own GTFS accumulated into historic timetables.
+
+| Product | `--what` | Size | Coverage |
+|---|---|---|---|
+| Actual arrivals, per pattern | `processed` | 34.4 GB | 886 patterns |
+| Scheduled arrivals, per route | `timetables` | 13.8 GB | 124 routes |
+| Their summary metrics | `metrics` | 357 MB | one file |
+| Raw 5-minute pings | `raw` | 50.6 GB | 1529 days, no gaps |
+
+Sizes measured 2026-08-05; the pipeline runs daily, so they grow. Requires `pyarrow`.
+
+```
+python fetch_stopwatch.py --what timetables --dest data/stopwatch --dry-run
+python fetch_stopwatch.py --what processed  --dest <big-disk>
+```
+
+Read [`docs/bus-tracker-data-plan.md`](docs/bus-tracker-data-plan.md) before pulling — it
+covers which products are actually needed, the pattern-churn hazard, and what has to be
+calibrated on control routes before any number is quoted.
 
 ## Running
 
