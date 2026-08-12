@@ -334,6 +334,215 @@ def route_stops(route, with_coords=True):
     return stops.merge(gtfs_stops(), left_on='stpid', right_on='stop_id', how='left')
 
 
+# --- which way is a pattern going? -------------------------------------------
+# A pattern id is spelled three different ways in this project, which is the
+# single biggest trap when joining these files together:
+#
+#     actuals  (processed_by_pid/)   '6662.0'   -- a float that became a string
+#     timetables (clean_timetables/) '06662'    -- zero-padded to five characters
+#     raw pings (full_day_data/)      6662.0    -- an actual float
+#
+# norm_pid() puts all three into the same form so they can be joined at all.
+
+def norm_pid(value):
+    """Put a pattern id into one canonical spelling: no padding, no '.0'.
+
+    '06662', '6662.0', 6662.0 and '6662' all come back as '6662'. Returns None
+    for a missing value, so a column of them can be built without exploding on
+    the NaNs that appear in the raw ping files.
+    """
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    text = str(value).strip()
+    if text in ('', 'nan', 'None'):
+        return None
+    return str(int(float(text)))
+
+
+_TRIPS_CACHE = {}
+
+
+def gtfs_trips(gtfs_dir=GTFS):
+    """Every scheduled trip CTA has published, pooled across all the feeds on disk.
+
+    `data/gtfs/` holds several GTFS snapshots -- four zipped feeds plus one
+    loose unzipped copy. Each is the timetable as it stood on one date. This
+    reads `trips.txt` out of all of them and pools the result, keeping one row
+    per `trip_id`.
+
+    The column worth having is `direction`, which CTA spells as a word: East,
+    West, North or South. `direction_id` is the same thing as 0/1.
+
+    Pooling across feeds is safe because a `trip_id` means the same thing in
+    every feed that contains it -- checked on the files here, where no trip_id
+    carries two different directions. Result is cached in memory per directory,
+    since the notebooks ask for it repeatedly.
+    """
+    import zipfile
+    if gtfs_dir in _TRIPS_CACHE:
+        return _TRIPS_CACHE[gtfs_dir]
+
+    keep = ['route_id', 'trip_id', 'direction', 'direction_id', 'schd_trip_id']
+    frames = []
+    for path in sorted(glob.glob(f'{gtfs_dir}/cta_gtfs_*.zip')):
+        with zipfile.ZipFile(path) as archive:
+            name = next(n for n in archive.namelist() if n.endswith('trips.txt'))
+            with archive.open(name) as handle:
+                frames.append(pd.read_csv(handle, dtype=str)[keep])
+    loose = f'{gtfs_dir}/trips.txt'
+    if os.path.exists(loose):
+        frames.append(pd.read_csv(loose, dtype=str)[keep])
+
+    trips = pd.concat(frames, ignore_index=True).drop_duplicates('trip_id')
+    _TRIPS_CACHE[gtfs_dir] = trips
+    return trips
+
+
+PID_DIRECTIONS_PATH = f'{DERIVED}/pid_directions.csv'
+
+
+def pattern_directions(route, gtfs_dir=GTFS, use_reference=True):
+    """Work out which direction each of a route's patterns runs, from CTA's own schedule.
+
+    Reads the pre-built reference table when there is one, and only falls back to
+    doing the join itself when there is not. `build_pid_directions.py` writes that
+    table; it takes about 80 seconds for the whole network, against roughly 20 for
+    a single busy route done here, so on a route like 66 -- whose timetable is 27
+    million rows -- the reference is the difference between a notebook cell that
+    returns instantly and one that does not. Pass `use_reference=False` to force
+    the join, which is what to do if you suspect the file is stale.
+
+    The arrival files carry no direction column, but they do carry `pid`, and a
+    pattern runs one way only -- so labelling the pattern labels every row.
+
+    How the label is obtained: StopWatch's timetable for the route lists, for
+    every scheduled trip, both the `pid` it ran and CTA's `trip_id`. GTFS
+    `trips.txt` lists, for every `trip_id`, the direction. Joining the two on
+    `trip_id` gives pid -> direction.
+
+    **Join on `trip_id`, never on `schd_trip_id`.** Both columns sit side by
+    side in the timetable and it is easy to reach for the wrong one. On route
+    66 the timetable holds 27,616 distinct `trip_id` but only 17,040 distinct
+    `schd_trip_id`: the scheduled-trip id repeats across service periods, so
+    joining on it matches one pattern to trips in both directions and the
+    answer looks like noise. `trip_id` is CTA's own unique id, built as the
+    first four characters of `service_id` followed by `schd_trip_id` padded to
+    nine digits, and it is unique.
+
+    Only a minority of timetable trips find a match, because the feeds on disk
+    are 2025-2026 snapshots while the timetables run from 2022. That does not
+    matter for this purpose: one matched trip is enough to label a pattern, and
+    the count is returned so a thinly-evidenced label can be spotted.
+
+    Args:
+        route: route id, e.g. '66'.
+        gtfs_dir: where the GTFS feeds live.
+
+    Returns one row per pattern, with:
+        pid            canonical pattern id, matching norm_pid()
+        direction      East / West / North / South, or None if no trip matched
+        n_trips        how many matched trips back the label
+        n_directions   how many distinct directions those trips gave. Anything
+                       other than 1 means the pattern is not consistent and the
+                       label should not be trusted -- check this column rather
+                       than assuming.
+    """
+    if use_reference and os.path.exists(PID_DIRECTIONS_PATH):
+        reference = pd.read_csv(PID_DIRECTIONS_PATH,
+                                dtype={'route': str, 'pid': str, 'direction': str})
+        rows = reference[reference.route == str(route)]
+        if len(rows):
+            return rows[['pid', 'direction', 'n_trips', 'n_directions']].reset_index(drop=True)
+
+    path = f'{TIMETABLES_DIR}/rt{route}_timetable.parquet'
+    timetable = (pq.read_table(path, columns=['pid', 'trip_id']).to_pandas()
+                 .drop_duplicates('trip_id'))
+    timetable['pid'] = timetable.pid.map(norm_pid)
+
+    trips = gtfs_trips(gtfs_dir)
+    matched = timetable.merge(trips[['trip_id', 'direction']], on='trip_id', how='left')
+
+    labelled = matched.dropna(subset=['direction'])
+    summary = (labelled.groupby('pid').direction
+               .agg(direction=lambda s: s.value_counts().idxmax(),
+                    n_trips='size', n_directions='nunique'))
+    # Patterns with no matched trip at all still get a row, so they are visible
+    # rather than silently absent from the result.
+    everything = pd.DataFrame(index=pd.Index(sorted(matched.pid.dropna().unique()), name='pid'))
+    out = everything.join(summary)
+    out['n_trips'] = out.n_trips.fillna(0).astype(int)
+    out['n_directions'] = out.n_directions.fillna(0).astype(int)
+    return out.reset_index()
+
+
+# --- the rider's wait curve --------------------------------------------------
+def survival(headway_minutes, w):
+    """S(w): the share of riders who wait longer than `w` minutes.
+
+    Equivalently, the share of in-window time during which the next bus is more
+    than `w` minutes away. Both readings come from the same sum:
+
+        S(w) = sum_i max(h_i - w, 0) / sum_i h_i
+
+    Derivation in docs/methods.md. Rests on riders arriving uniformly, which is
+    least defensible late at night and on infrequent routes.
+
+    Args:
+        headway_minutes: 1-D array of gaps, in minutes.
+        w: a single wait, or an array of them.
+
+    Returns a float for a scalar `w`, an array for an array `w`.
+
+    Use survival_curve() when evaluating a whole grid -- it is the same number,
+    computed in one pass instead of one pass per grid point.
+    """
+    h = np.asarray(headway_minutes, dtype=float)
+    if np.isscalar(w):
+        return float(np.maximum(h - w, 0).sum() / h.sum())
+    return survival_curve(h, w)
+
+
+def survival_curve(headway_minutes, w_grid):
+    """S(w) over a whole grid of waits, in one pass over the data.
+
+    The obvious implementation evaluates `max(h - w, 0).sum()` once per grid
+    point, which is O(grid x n) and allocates a fresh copy of `h` every time.
+    On a 2,400-point grid over 5 million gaps that is 12 billion element
+    operations, and it was 82% of this project's notebook runtime.
+
+    This computes the same curve in O(n log n + grid). Sort the gaps once, and
+    note that for a given `w` only the gaps longer than `w` contribute:
+
+        sum_i max(h_i - w, 0)  =  (sum of gaps > w)  -  w * (count of gaps > w)
+
+    With `h` sorted, `searchsorted` gives that count directly, and a reverse
+    cumulative sum gives the tail total for every possible cut point at once.
+
+    Args:
+        headway_minutes: 1-D array of gaps, in minutes.
+        w_grid: array of waits to evaluate at.
+
+    Returns an array of S(w), one per grid point.
+    """
+    h = np.sort(np.asarray(headway_minutes, dtype=float))
+    n = h.size
+    total = h.sum()
+    # tail_sum[k] = sum of h[k:], with tail_sum[n] = 0 so the empty tail is valid.
+    tail_sum = np.concatenate([np.cumsum(h[::-1])[::-1], [0.0]])
+    # number of gaps <= w, so n - k is the number strictly greater than w
+    k = np.searchsorted(h, np.asarray(w_grid, dtype=float), side='right')
+    return (tail_sum[k] - np.asarray(w_grid, dtype=float) * (n - k)) / total
+
+
+def even_service_survival(mean_headway, w):
+    """S(w) if the same total service ran at a perfectly constant headway.
+
+    The comparison line: with every gap exactly `mean_headway` long, a rider
+    waits more than `w` only by landing in the first (mean - w) of a gap.
+    """
+    return np.maximum(np.asarray(mean_headway) - np.asarray(w), 0) / mean_headway
+
+
 # --- route plots -------------------------------------------------------------
 def plot_route_overview(stops, route, source=CURRENT_GEOMETRY, ax=None):
     """Plot a route's stops on top of its line, with the end points labelled.
