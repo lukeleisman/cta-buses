@@ -1,4 +1,6 @@
+# `data` is a symlink to /media/work/data/cta; `data/` alone does not match it
 data/
+data
 NOTES.md
 cta-buses-LLnotesandprompts.txt
 sessions/
