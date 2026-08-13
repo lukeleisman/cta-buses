@@ -1,61 +1,82 @@
-# CTA bus service — what is promised, what is scheduled, what is delivered
+# CTA's Frequent Network — did the 10-minute promise hold?
 
-This repository exists to understand CTA bus service. It works outward through four questions:
+Between March and December 2025 the CTA phased 20 bus routes into a **Frequent Network**,
+advertising waits of 10 minutes or less. This repository asks two questions about that.
 
-1. **Claimed** — what CTA advertises. The Frequent Network page promises 10-minute-or-less
-   waits on 20 routes.
-2. **Scheduled** — what the timetable actually plans, which is not always what is advertised.
-3. **Delivered** — what riders actually get, measured from vehicle positions rather than
-   assumed from the schedule.
-4. **Effect on ridership** — whether service changes move boardings, especially across the
-   Frequent Network rollout.
+**1. Service delivered.** The CTA ads promised 10 minutes or better, 6am–9pm weekdays,
+9am–9pm weekends. But how often is that true? We can use real bus data to find out, comparing
+scheduled service with the service we, as riders, actually experience. We understand that
+without dedicated bus lanes, signal priority, etc. these ads aren't realistic, but putting
+numbers to the data and seeing what needs to be improved is a good first step.
 
-Between March and December 2025 the CTA phased 20 bus routes into that Frequent Network. Can we
-see it in the ridership data — and do the routes that gained the most service show the biggest
-change? That is where the work started, and questions 2 and 3 are now in progress.
+**2. Ridership.** To what extent, if any, has ridership responded to the creation of the
+network? Does ridership signal, if any, show dependency on actual service or advertised/
+scheduled service?
 
-![CTA bus ridership by week, 2001–2026](docs/weekly_ridership.png)
-
-Twenty-five years of weekly boardings: ~6M/week through the 2000s, a slow decline to ~5M by
-2019, the 2020 collapse to 1.3M, and a recovery that has reached ~4.2M. The lower panel is the
-number of routes reporting, which moves enough that no system total can be read without it.
+To answer these questions we first need to understand the available data; several notebooks
+below are dedicated to that.
 
 ## Status: in progress
 
-The analysis is being rebuilt from the data up. An earlier agent-generated version
-(`frequent_network_analysis.ipynb`) reached conclusions that have **not** been independently
-verified and whose data selections were not all visible in the notebook — treat every number in
-it as provisional. The rebuild starts with `exploration.ipynb`.
+Nothing here is a finding yet. Question 1 is being built and checked on one route (66) before
+it runs at scale; question 2 has not been restarted. `frequent_network_analysis.ipynb` was
+agent-generated — its conclusions are unverified and its data selections not all visible, so
+treat every number in it as provisional.
 
 Ground rule for the rebuild: every filter or transformation happens in a visible cell and prints
 what it did, and checks report their counts even when the count is zero.
+`ten_minute_promise.ipynb` ends with a section listing what in it is unverified, untested, or
+known wrong.
 
 ## Layout
 
-- **`exploration.ipynb`** — start here. System-wide exploration before any before/after design:
-  integrity checks and cross-checks, corridors, total and per-route ridership, per-era statistics,
-  and day-of-week structure. Writes `data/derived/` for the two notebooks below.
+**Understanding the data**
+
+- **`data_inventory.ipynb`** — start here. What is on disk, an example file from each source and
+  how to re-fetch it, the four route-geometry files, and a look at any route's stops.
+- `exploration.ipynb` — system-wide ridership: integrity checks and cross-checks, corridors,
+  total and per-route ridership, per-era statistics, day-of-week structure. Writes
+  `data/derived/` for the two below.
 - `holidays.ipynb` — which days CTA actually runs a holiday schedule on, and how much ridership
-  changes when it does. Needs `exploration.ipynb` to have run.
+  changes when it does. Needs `exploration.ipynb`.
 - `seasonality.ipynb` — the within-year profile, trend removed and holiday weeks held out, and
-  whether it can be pooled across eras. Needs both of the above to have run.
+  whether it pools across eras. Needs both of the above.
+
+**Question 1 — service**
+
+- **`ten_minute_promise.ipynb`** — builds headways from actual arrivals one visible step at a
+  time, checks them against the raw 5-minute pings, and reports the gap distribution and the
+  wait a rider actually experiences. Currently route 66.
+- `build_pid_directions.py` — writes `data/derived/pid_directions.csv`, the pattern → direction
+  table, by joining StopWatch timetables to GTFS. Run once for the whole network (~80s); doing
+  it inline costs ~20s per busy route. Exits non-zero rather than write an inconsistent table.
+- `fetch_stopwatch.py` — downloads the realised-service archive (below). Resumable; `--dry-run`
+  sizes a pull before it moves any data.
+
+**Question 2 — ridership**
+
 - `frequent_network_analysis.ipynb` — the earlier route-level difference-in-differences writeup.
   Being replaced; kept for reference.
-- `analyze.py`, `inference_proto.py`, `build_notebook.py` — supporting scripts for that earlier
-  notebook.
-- `fetch_stopwatch.py` — downloads the realised-service archive (below). Resumable;
-  `--dry-run` sizes a pull before it moves any data.
-- `docs/bus-tracker-data-plan.md` — the realised-frequency acquisition plan: source inventory,
+- `analyze.py`, `inference_proto.py`, `build_notebook.py`, `check_r_routes.py` — supporting
+  scripts for that notebook. `output/` holds its CSV summaries and figures.
+
+**Shared code and documentation**
+
+- `ctabus.py` — what more than one notebook needs, so copies cannot drift: plot style, paths into
+  `data/`, file-inspection helpers, route-shape and stop loaders. Writes nothing to disk.
+- `docs/fn-analysis-plan.md` — the question-2 rebuild plan: hypotheses fixed before outcomes are
+  examined, design parameters, correction layers, and the decisions still outstanding.
+- `docs/bus-tracker-data-plan.md` — acquisition plan for realised frequency: source inventory,
   what to pull where, known hazards, and the calibration that comes before any claim.
-- `docs/methods.md` — derivations and references. Currently headways and rider wait; other
-  statistical methods get added here rather than expanded inline.
-- `docs/` — figures referenced from this README.
-- `output/` — CSV summaries and figures from `analyze.py`.
+- `docs/methods.md` — derivations and references. Currently headways and rider wait; new
+  statistical methods go here rather than expand inline.
+- `docs/cta-advertised-service-increases.md`, `docs/ridership-restatement-notes.md`,
+  `docs/CTA_MEMO_Ridership_Update_2026-03-20.pdf` — CTA's own published statements, kept as sources.
 
 ## Data
 
-Neither dataset is committed (`data/` is gitignored). Both are public and regenerate from the
-Chicago Data Portal.
+Nothing here is committed (`data/` is gitignored, and is a symlink to a larger disk). All of it
+is public and regenerates from the sources below.
 
 **Daily totals by route** → `data/cta_bus_daily.csv` (47MB)
 [CTA Ridership – Bus Routes – Daily Totals by Route](https://data.cityofchicago.org/Transportation/CTA-Ridership-Bus-Routes-Daily-Totals-by-Route/jyb9-n7fm/about_data)
@@ -66,6 +87,12 @@ Chicago Data Portal.
 curl "https://data.cityofchicago.org/resource/jyb9-n7fm.csv?\$limit=2000000" \
      -o data/cta_bus_daily.csv
 ```
+
+![CTA bus ridership by week, 2001–2026](docs/weekly_ridership.png)
+
+Twenty-five years of weekly boardings from that file: ~6M/week through the 2000s, a slow decline
+to ~5M by 2019, the 2020 collapse to 1.3M, and a recovery that has reached ~4.2M. The lower panel
+is the number of routes reporting, which moves enough that no system total can be read without it.
 
 **Monthly day-type averages, with route names** → `data/cta_bus_monthly.csv` (3MB)
 [CTA Ridership – Bus Routes – Monthly Day-Type Averages & Totals](https://data.cityofchicago.org/Transportation/CTA-Ridership-Bus-Routes-Monthly-Day-Type-Averages/bynn-gwxy)
@@ -111,6 +138,10 @@ python fetch_stopwatch.py --what timetables --dest data/stopwatch --dry-run
 python fetch_stopwatch.py --what processed  --dest <big-disk>
 ```
 
+Arrival times in `processed_by_pid/` are **estimated, not observed** — interpolated between
+5-minute pings. `data_inventory.ipynb` §2a quotes the upstream code that does it, and
+`ten_minute_promise.ipynb` §3 checks the result against the raw pings.
+
 Read [`docs/bus-tracker-data-plan.md`](docs/bus-tracker-data-plan.md) before pulling — it
 covers which products are actually needed, the pattern-churn hazard, and what has to be
 calibrated on control routes before any number is quoted.
@@ -122,13 +153,17 @@ behind and is not what these notebooks were run against. Dependencies are not ye
 
 ```
 conda activate divvy-cta
-jupyter lab exploration.ipynb
+jupyter lab data_inventory.ipynb
 ```
 
-The three notebooks run in order — `exploration.ipynb`, then `holidays.ipynb`, then
+`data_inventory.ipynb` and `ten_minute_promise.ipynb` stand alone, except that
+`ten_minute_promise.ipynb` wants `data/derived/pid_directions.csv` — build it once with
+`python build_pid_directions.py`, or let the notebook do the join itself, slowly.
+
+The ridership notebooks run in order: `exploration.ipynb`, then `holidays.ipynb`, then
 `seasonality.ipynb`. The first writes `data/derived/daily.csv` and `route_inventory.csv`; the
-second writes `data/derived/holiday_calendar.csv`, which the third reads. `data/` is gitignored,
-so these are local and regenerate by re-running the notebooks.
+second writes `data/derived/holiday_calendar.csv`, which the third reads. All of it regenerates
+by re-running the notebooks.
 
 Notebook outputs are stripped on commit by [`nbstripout`](https://github.com/kynan/nbstripout),
 configured in `.gitattributes`, so the repository stays small. Your working copy keeps its
